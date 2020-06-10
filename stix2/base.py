@@ -91,7 +91,7 @@ class _STIXBase(Mapping):
 
         return all_properties
 
-    def _check_property(self, prop_name, prop, kwargs):
+    def _check_property(self, prop_name, prop, kwargs, allow_custom=False):
         if prop_name not in kwargs:
             if hasattr(prop, 'default'):
                 value = prop.default()
@@ -101,7 +101,10 @@ class _STIXBase(Mapping):
 
         if prop_name in kwargs:
             try:
-                kwargs[prop_name] = prop.clean(kwargs[prop_name])
+                if isinstance(prop, (stix2.properties.ReferenceProperty, stix2.properties.ListProperty)):
+                    kwargs[prop_name] = prop.clean(kwargs[prop_name], allow_custom)
+                else:
+                    kwargs[prop_name] = prop.clean(kwargs[prop_name])
             except InvalidValueError:
                 # No point in wrapping InvalidValueError in another
                 # InvalidValueError... so let those propagate.
@@ -195,7 +198,7 @@ class _STIXBase(Mapping):
             raise MissingPropertiesError(cls, missing_kwargs)
 
         for prop_name, prop_metadata in self._properties.items():
-            self._check_property(prop_name, prop_metadata, setting_kwargs)
+            self._check_property(prop_name, prop_metadata, setting_kwargs, allow_custom)
 
         # Cache defaulted optional properties for serialization
         defaulted = []

@@ -138,7 +138,6 @@ def dict_to_stix2(stix_dict, allow_custom=False, version=None):
             # be parsed into STIX object, returned as is
             return stix_dict
         raise ParseError("Can't parse unknown object type '%s'! For custom types, use the CustomObject decorator." % stix_dict['type'])
-
     return obj_class(allow_custom=allow_custom, **stix_dict)
 
 

@@ -201,7 +201,7 @@ class ListProperty(Property):
             self.contained = contained
         super(ListProperty, self).__init__(**kwargs)
 
-    def clean(self, value):
+    def clean(self, value, allow_custom=False):
         try:
             iter(value)
         except TypeError:
@@ -213,7 +213,10 @@ class ListProperty(Property):
         result = []
         for item in value:
             try:
-                valid = self.contained.clean(item)
+                if isinstance(self.contained, stix2.properties.ReferenceProperty):
+                    valid = self.contained.clean(item, allow_custom)
+                else:
+                    valid = self.contained.clean(item)
             except ValueError:
                 raise
             except AttributeError:
@@ -485,29 +488,35 @@ class ReferenceProperty(Property):
 
         super(ReferenceProperty, self).__init__(**kwargs)
 
-    def clean(self, value):
+    def clean(self, value, allow_custom=False):
         if isinstance(value, _STIXBase):
             value = value.id
         value = str(value)
 
-        possible_prefix = value[:value.index('--')]
+        if not allow_custom:
+            possible_prefix = value[:value.index('--')]
 
-        if self.valid_types:
-            ref_valid_types = enumerate_types(self.valid_types, 'v' + self.spec_version.replace(".", ""))
+            if self.valid_types:
+                ref_valid_types = enumerate_types(self.valid_types, 'v' + self.spec_version.replace(".", ""))
 
-            if possible_prefix in ref_valid_types:
-                required_prefix = possible_prefix
-            else:
-                raise ValueError("The type-specifying prefix '%s' for this property is not valid" % (possible_prefix))
-        elif self.invalid_types:
-            ref_invalid_types = enumerate_types(self.invalid_types, 'v' + self.spec_version.replace(".", ""))
+                if possible_prefix in ref_valid_types:
+                    required_prefix = possible_prefix
+                else:
+                    raise ValueError("The type-specifying prefix '%s' for this property is not valid" % (possible_prefix))
+            elif self.invalid_types:
+                ref_invalid_types = enumerate_types(self.invalid_types, 'v' + self.spec_version.replace(".", ""))
 
-            if possible_prefix not in ref_invalid_types:
-                required_prefix = possible_prefix
-            else:
-                raise ValueError("An invalid type-specifying prefix '%s' was specified for this property" % (possible_prefix))
+                if possible_prefix not in ref_invalid_types:
+                    required_prefix = possible_prefix
+                else:
+                    raise ValueError("An invalid type-specifying prefix '%s' was specified for this property" % (possible_prefix))
 
-        _validate_id(value, self.spec_version, required_prefix)
+            _validate_id(value, self.spec_version, required_prefix)
+        else:
+            uuid_part = value[value.index("--") + 2:]
+            valid_uuid = _check_uuid(uuid_part, self.spec_version)
+            if not valid_uuid:
+                raise ValueError(ERROR_INVALID_ID.format(value))
 
         return value
 
@@ -515,7 +524,11 @@ class ReferenceProperty(Property):
 def enumerate_types(types, spec_version):
     """
     `types` is meant to be a list; it may contain specific object types and/or
-        the any of the words "SCO", "SDO", or "SRO"
+        any of the words "SCO", "SDO", or "SRO"
+
+    SCO = STIX Cyber Observables
+    SDO = STIX Domain Objects
+    SRO = STIX Relationship Objects
 
     Since "SCO", "SDO", and "SRO" are general types that encompass various specific object types,
         once each of those words is being processed, that word will be removed from `return_types`,
